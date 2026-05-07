@@ -23,7 +23,7 @@ import {
   where as firebaseWhere
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { MOCK_USERS, MOCK_COURSES } from './mock-data';
+import { MOCK_USERS, MOCK_COURSES, MOCK_SEMESTERS, MOCK_SECTIONS } from './mock-data';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'mock-key',
@@ -127,8 +127,11 @@ export const onSnapshot = (ref: any, cb: any) => {
   if (IS_MOCK) {
     console.log('[Mock-DB] Snapshot listener for:', ref.path || ref.coll);
     let data: any[] = [];
-    if (ref.path === 'users' || ref.coll === 'users') data = Object.values(MOCK_USERS);
-    if (ref.path === 'subjects' || ref.coll === 'subjects') data = MOCK_COURSES;
+    const key = ref.path || ref.coll || '';
+    if (key === 'users') data = Object.values(MOCK_USERS);
+    if (key === 'subjects') data = MOCK_COURSES;
+    if (key === 'semesters') data = MOCK_SEMESTERS;
+    if (key === 'sections') data = MOCK_SECTIONS;
     
     setTimeout(() => {
       cb({
