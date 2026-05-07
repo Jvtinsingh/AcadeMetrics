@@ -35,7 +35,20 @@ export default function ExamTakingEnvironment() {
     if (!id) return;
     const fetchExam = async () => {
       try {
-        const docSnap = await getDoc(doc(db, 'exams', id)) as any;
+        // Try fetching directly from 'exams' collection
+        let docSnap = await getDoc(doc(db, 'exams', id)) as any;
+        
+        if (!docSnap.exists()) {
+          // The id might be from student_exams — look it up to get the real examId
+          const studentExamSnap = await getDoc(doc(db, 'student_exams', id)) as any;
+          if (studentExamSnap.exists()) {
+            const realExamId = studentExamSnap.data().examId;
+            if (realExamId) {
+              docSnap = await getDoc(doc(db, 'exams', realExamId)) as any;
+            }
+          }
+        }
+
         if (docSnap.exists()) {
           const data = docSnap.data();
           setExamInfo(data);
