@@ -34,7 +34,11 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:000:web:000',
 };
 
-const IS_MOCK = process.env.NEXT_PUBLIC_MOCK_MODE === 'true';
+const IS_MOCK = 
+  process.env.NEXT_PUBLIC_MOCK_MODE === 'true' || 
+  !process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 
+  process.env.NEXT_PUBLIC_FIREBASE_API_KEY === 'mock-key';
+
 
 // Mock auth state management
 let _mockAuthCb: ((user: any) => void) | null = null;
