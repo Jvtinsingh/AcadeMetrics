@@ -112,6 +112,18 @@ STUDENTS_RAW.forEach(([name, enrollment, section], i) => {
   };
 });
 
+// Demo login aliases (for @academetrics.edu quick login)
+MOCK_USERS['faculty@academetrics.edu'] = {
+  uid: 'faculty-009', email: 'faculty@academetrics.edu', role: 'faculty',
+  displayName: 'Mr. Harjender Singh', status: 'active',
+  designation: 'Assistant Professor', joinedDate: '2020-08-01',
+};
+MOCK_USERS['student@academetrics.edu'] = {
+  uid: 'student-08021202023', email: 'student@academetrics.edu', role: 'student',
+  displayName: 'Jatin Singh', status: 'active',
+  enrollment: '08021202023', section: 'B', joinedDate: '2023-08-01',
+};
+
 // ===== BCA Semester VI Subjects =====
 export const MOCK_COURSES = [
   { id: 'sub-1', name: 'Cloud Computing', code: 'BCA301', credits: 4, students: 117, status: 'Active', facultyId: 'faculty-003' },

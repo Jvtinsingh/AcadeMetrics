@@ -36,16 +36,24 @@ const firebaseConfig = {
 
 const IS_MOCK = process.env.NEXT_PUBLIC_MOCK_MODE === 'true';
 
+// Mock auth state management
+let _mockAuthCb: ((user: any) => void) | null = null;
+let _mockCurrentUser: any = null;
+
 // Initialize Firebase (Gracefully handle empty config)
 let app: any = null;
 let auth: any = IS_MOCK ? { 
   currentUser: null,
   onAuthStateChanged: (cb: any) => {
-    // Simulate initial load
-    setTimeout(() => cb(null), 500);
-    return () => {};
+    _mockAuthCb = cb;
+    setTimeout(() => cb(_mockCurrentUser), 500);
+    return () => { _mockAuthCb = null; };
   },
-  signOut: async () => { console.log('[Mock-Auth] Signed out'); }
+  signOut: async () => {
+    _mockCurrentUser = null;
+    if (_mockAuthCb) _mockAuthCb(null);
+    console.log('[Mock-Auth] Signed out');
+  }
 } : null;
 let db: any = IS_MOCK ? { appId: 'mock-db' } : null;
 let storage: any = {};
@@ -69,14 +77,23 @@ export const signInWithEmailAndPassword = async (a: any, email: string, p: strin
   if (IS_MOCK) {
     console.log('[Mock-Auth] Attempting login for:', email);
     const user = (MOCK_USERS as any)[email];
-    if (user) return { user };
+    if (user) {
+      _mockCurrentUser = user;
+      if (_mockAuthCb) _mockAuthCb(user);
+      return { user };
+    }
     throw new Error('Mock authentication failed: User not found in MOCK_USERS');
   }
   return firebaseSignIn(auth, email, p);
 };
 
 export const createUserWithEmailAndPassword = async (a: any, email: string, p: string) => {
-  if (IS_MOCK) return { user: { uid: `mock-${Date.now()}`, email } };
+  if (IS_MOCK) {
+    const newUser = { uid: `mock-${Date.now()}`, email };
+    _mockCurrentUser = newUser;
+    if (_mockAuthCb) _mockAuthCb(newUser);
+    return { user: newUser };
+  }
   return firebaseCreateUser(auth, email, p);
 };
 
@@ -91,7 +108,12 @@ export const signOut = async (a: any) => {
 };
 
 export const signInWithPopup = async (a: any, p: any) => {
-  if (IS_MOCK) return { user: (MOCK_USERS as any)['student@academetrics.edu'] };
+  if (IS_MOCK) {
+    const user = (MOCK_USERS as any)['student@academetrics.edu'];
+    _mockCurrentUser = user;
+    if (_mockAuthCb) _mockAuthCb(user);
+    return { user };
+  }
   return firebasePopup(auth, p);
 };
 
