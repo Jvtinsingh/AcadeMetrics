@@ -117,6 +117,46 @@ export const signInWithPopup = async (a: any, p: any) => {
   return firebasePopup(auth, p);
 };
 
+// --- Mock In-Memory Reactive Firestore ---
+
+// Store: collectionName -> array of docs
+const _mockStore: Record<string, any[]> = {};
+// Listeners: collectionName -> array of callbacks
+const _mockListeners: Record<string, ((snap: any) => void)[]> = {};
+
+// Initialize store with seed data
+if (IS_MOCK) {
+  _mockStore['users'] = Object.values(MOCK_USERS).map((u: any) => ({ ...u, id: u.uid }));
+  _mockStore['subjects'] = [...MOCK_COURSES];
+  _mockStore['semesters'] = [...MOCK_SEMESTERS];
+  _mockStore['sections'] = [...MOCK_SECTIONS];
+  _mockStore['exams'] = [];
+  _mockStore['faculty_materials'] = [];
+  _mockStore['student_materials'] = [];
+  _mockStore['announcements'] = [];
+  _mockStore['student_exams'] = [];
+  _mockStore['enrollments'] = [];
+}
+
+function _getCollection(name: string): any[] {
+  if (!_mockStore[name]) _mockStore[name] = [];
+  return _mockStore[name];
+}
+
+function _buildSnap(collName: string) {
+  const data = _getCollection(collName);
+  return {
+    docs: data.map(d => ({ id: d.id || d.uid, data: () => d })),
+    empty: data.length === 0,
+  };
+}
+
+function _notifyListeners(collName: string) {
+  const listeners = _mockListeners[collName] || [];
+  const snap = _buildSnap(collName);
+  listeners.forEach(cb => cb(snap));
+}
+
 // --- Firestore Wrappers ---
 
 export const doc = (d: any, coll: string, id: string) => {
@@ -126,17 +166,27 @@ export const doc = (d: any, coll: string, id: string) => {
 
 export const getDoc = async (docRef: any) => {
   if (IS_MOCK && docRef.type === 'mock-doc') {
-    const user = Object.values(MOCK_USERS).find(u => u.uid === docRef.id);
-    return {
-      exists: () => !!user,
-      data: () => user || {},
-    };
+    const coll = _getCollection(docRef.coll);
+    const found = coll.find(d => (d.id || d.uid) === docRef.id);
+    if (!found) {
+      // Fallback: check MOCK_USERS by uid
+      const user = Object.values(MOCK_USERS).find(u => u.uid === docRef.id);
+      return { exists: () => !!user, data: () => user || {} };
+    }
+    return { exists: () => true, data: () => found };
   }
   return firebaseGetDoc(docRef);
 };
 
 export const setDoc = async (docRef: any, data: any) => {
-  if (IS_MOCK) return console.log('[Mock-DB] Saved doc:', docRef.id, data);
+  if (IS_MOCK) {
+    const coll = _getCollection(docRef.coll);
+    const idx = coll.findIndex(d => (d.id || d.uid) === docRef.id);
+    const newDoc = { ...data, id: docRef.id };
+    if (idx >= 0) { coll[idx] = newDoc; } else { coll.push(newDoc); }
+    _notifyListeners(docRef.coll);
+    return;
+  }
   return firebaseSetDoc(docRef, data);
 };
 
@@ -147,45 +197,84 @@ export const collection = (d: any, path: string) => {
 
 export const onSnapshot = (ref: any, cb: any) => {
   if (IS_MOCK) {
-    console.log('[Mock-DB] Snapshot listener for:', ref.path || ref.coll);
-    let data: any[] = [];
-    const key = ref.path || ref.coll || '';
-    if (key === 'users') data = Object.values(MOCK_USERS);
-    if (key === 'subjects') data = MOCK_COURSES;
-    if (key === 'semesters') data = MOCK_SEMESTERS;
-    if (key === 'sections') data = MOCK_SECTIONS;
+    const collName = ref.path || ref.coll || '';
+    console.log('[Mock-DB] Snapshot listener for:', collName);
     
-    setTimeout(() => {
-      cb({
-        docs: data.map(d => ({ id: d.id || d.uid, data: () => d }))
-      });
-    }, 100);
-    return () => {};
+    // Register listener
+    if (!_mockListeners[collName]) _mockListeners[collName] = [];
+    _mockListeners[collName].push(cb);
+
+    // Send initial data
+    setTimeout(() => cb(_buildSnap(collName)), 100);
+
+    // Return unsubscribe
+    return () => {
+      const listeners = _mockListeners[collName];
+      if (listeners) {
+        const idx = listeners.indexOf(cb);
+        if (idx >= 0) listeners.splice(idx, 1);
+      }
+    };
   }
   return firebaseSnapshot(ref, cb);
 };
 
 export const addDoc = async (collRef: any, data: any) => {
-  if (IS_MOCK) return console.log('[Mock-DB] Added to', collRef.path, ':', data);
+  if (IS_MOCK) {
+    const collName = collRef.path || collRef.coll || '';
+    const id = `mock-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newDoc = { ...data, id };
+    _getCollection(collName).push(newDoc);
+    _notifyListeners(collName);
+    console.log('[Mock-DB] Added to', collName, ':', newDoc);
+    return { id };
+  }
   return firebaseAddDoc(collRef, data);
 };
 
 export const updateDoc = async (docRef: any, data: any) => {
-  if (IS_MOCK) return console.log('[Mock-DB] Updated doc', docRef.id, ':', data);
+  if (IS_MOCK) {
+    const coll = _getCollection(docRef.coll);
+    const idx = coll.findIndex(d => (d.id || d.uid) === docRef.id);
+    if (idx >= 0) {
+      coll[idx] = { ...coll[idx], ...data };
+      _notifyListeners(docRef.coll);
+    }
+    console.log('[Mock-DB] Updated doc', docRef.id, ':', data);
+    return;
+  }
   return firebaseUpdateDoc(docRef, data);
 };
 
 export const deleteDoc = async (docRef: any) => {
-  if (IS_MOCK) return console.log('[Mock-DB] Deleted doc', docRef.id);
+  if (IS_MOCK) {
+    const coll = _getCollection(docRef.coll);
+    const idx = coll.findIndex(d => (d.id || d.uid) === docRef.id);
+    if (idx >= 0) {
+      coll.splice(idx, 1);
+      _notifyListeners(docRef.coll);
+    }
+    console.log('[Mock-DB] Deleted doc', docRef.id);
+    return;
+  }
   return firebaseDeleteDoc(docRef);
 };
 
 export const getDocs = async (ref: any) => {
   if (IS_MOCK) {
-    let data: any[] = [];
-    if (ref.path === 'subjects' || ref.coll === 'subjects') data = MOCK_COURSES;
+    const collName = ref.path || ref.coll || '';
+    // Apply query constraints if present
+    let data = [..._getCollection(collName)];
+    if (ref.constraints) {
+      ref.constraints.forEach((c: any) => {
+        if (c && c.field && c.op === '==') {
+          data = data.filter(d => d[c.field] === c.value);
+        }
+      });
+    }
     return {
-      docs: data.map(d => ({ id: d.id || d.uid, data: () => d }))
+      docs: data.map(d => ({ id: d.id || d.uid, data: () => d })),
+      empty: data.length === 0,
     };
   }
   return firebaseGetDocs(ref);
